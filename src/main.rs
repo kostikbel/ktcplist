@@ -197,7 +197,7 @@ fn dump_xktls_od(xtls_od: &libc::xktls_session_onedir, rcv: bool, vlan: u16,
     }
     // XXX
     if xtls_od.ifnet[0] != 0 {
-	res.push_str(" if=");
+	res.push_str(" oflif=");
 	res.push_str(&dump_ifnamen(&xtls_od.ifnet));
     }
     if rcv && vlan != 0 {
