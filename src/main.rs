@@ -180,22 +180,25 @@ fn dump_key(ptr: *const u8, len: u16) -> String {
 }
 
 fn dump_xktls_od(xtls_od: &libc::xktls_session_onedir, rcv: bool, vlan: u16,
-	 ptr: *const u8) -> String {
+	 ptr: *const u8, args: &KTCPArgs) -> String {
     let mut res = String::from("");
     res.push_str(&format!("tls_vmajor={} tls_vminor={}",
 	xtls_od.tls_vmajor, xtls_od.tls_vminor));
     res.push_str(&format!(" cipher_algo={}", xtls_od.cipher_algorithm));
-    if xtls_od.cipher_key_len > 0 {
+    if xtls_od.cipher_key_len > 0 && args.keys {
 	res.push_str(&format!(" cipher_key={}", dump_key(ptr,
 	    xtls_od.cipher_key_len)));
     }
     res.push_str(&format!(" auth_algo={}", xtls_od.auth_algorithm));
-    if xtls_od.auth_key_len > 0 {
+    if xtls_od.auth_key_len > 0 && args.keys {
 	res.push_str(&format!(" auth_key={}", dump_key(unsafe { ptr.add(
 	    xtls_od.cipher_key_len as usize) },
 	    xtls_od.auth_key_len)));
     }
-    // XXX
+    if xtls_od.iv_len > 0 && args.keys {
+	res.push_str(&format!(" iv={}", dump_key(xtls_od.iv.as_ptr(),
+	    xtls_od.iv_len)));
+    }
     if xtls_od.ifnet[0] != 0 {
 	res.push_str(" oflif=");
 	res.push_str(&dump_ifnamen(&xtls_od.ifnet));
@@ -207,7 +210,7 @@ fn dump_xktls_od(xtls_od: &libc::xktls_session_onedir, rcv: bool, vlan: u16,
     res
 }
 
-fn dump_xktls(xktls: &libc::xktls_session) -> String {
+fn dump_xktls(xktls: &libc::xktls_session, args: &KTCPArgs) -> String {
     let mut res = String::from("");
     let ptr: *const u8 = unsafe {
 	std::mem::transmute::<&libc::xktls_session, *const u8>(xktls).
@@ -217,11 +220,11 @@ fn dump_xktls(xktls: &libc::xktls_session) -> String {
     res.push_str(&dump_conninfo(&xktls.coninf));
     res.push('\t');
     res.push_str(&format!("rcv=({})", dump_xktls_od(
-	&xktls.rcv, true, xktls.rx_vlan_id as u16, ptr)));
+	&xktls.rcv, true, xktls.rx_vlan_id as u16, ptr, args)));
     res.push('\t');
     res.push_str(&format!("snd=({})", dump_xktls_od(&xktls.snd, false, 0,
 	unsafe { ptr.add(xktls.rcv.cipher_key_len as usize +
-	    xktls.rcv.auth_key_len as usize) })));
+	    xktls.rcv.auth_key_len as usize) }, args)));
     res
 }
 
@@ -237,7 +240,7 @@ fn main() {
 	let mut xktls: &libc::xktls_session = unsafe { &*xktlss };
 	loop {
 	    if xktls.rcv.gennum < inpgen && xktls.snd.gennum < inpgen {
-		println!("{}", dump_xktls(xktls));
+		println!("{}", dump_xktls(xktls, &args));
 	    } else if args.debug > 1 {
 		println!("conn {} skipped, generations rcv {} snd {}",
 			 i, xktls.rcv.gennum, xktls.snd.gennum);
