@@ -3,7 +3,7 @@ use std::ffi::CString;
 use std::process;
 use std::ptr;
 use clap::Parser;
-//use serde::{Serialize, Serializer};
+use serde::{Serialize, Serializer};
 //use serde_json::Result;
 
 #[derive(Parser, Debug)]
@@ -36,30 +36,41 @@ fn get_errno() -> libc::c_int {
     std::io::Error::last_os_error().raw_os_error().unwrap()
 }
 
-/*
-impl Serialize for libc::xktls_session {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-	//        serializer.serialize_i32(*self)
-	S::Error()
-    }
+#[derive(Serialize)]
+struct TCPConn {
+    laddr: std::net::IpAddr,
+    lport: u16,
+    faddr: std::net::IpAddr,
+    fport: u16,
+    fib: u16,
 }
-*/
 
-//#[derive(Serialize)]
+#[derive(Serialize)]
+struct KTLSSessInfo {
+    iv: Vec<u8>,
+    cipher_algorithm: i32,
+    cipher_key: Vec<u8>,
+    auth_algorithm: i32,
+    auth_key: Vec<u8>,
+    max_frame_len: u16,
+    tls_vmajor: u8,
+    tls_vminor: u8,
+    tls_hlen: u8,
+    tls_tlen: u8,
+    tls_bs: u8,
+    flags: u8,
+    vlan: u16,
+    offload_ifnet: String,
+}
+
+#[derive(Serialize)]
 struct KTLSTCPConn {
-    xktls: libc::xktls_session,
-    iv_rcv: Vec<u8>,
-    cipher_rcv_key: Vec<u8>,
-    auth_rcv_key: Vec<u8>,
-    iv_snd: Vec<u8>,
-    cipher_snd_key: Vec<u8>,
-    auth_snd_key: Vec<u8>,
+    ie: TCPConn,
+    rcv: KTLSSessInfo,
+    snd: KTLSSessInfo,
 }
 
-//#[derive(Serialize)]
+#[derive(Serialize)]
 struct KTLSTCPConns {
     conns: Vec<KTLSTCPConn>,
 }
@@ -138,58 +149,12 @@ fn fetch_klts_table(dump_keys: bool) -> (*const libc::xktls_session,
     res
 }
 
-fn dump_addr_v4(a: &libc::in_dependaddr) -> String {
-    let addr = std::net::Ipv4Addr::from_bits(u32::to_be(unsafe {
-	a.id46_addr.ia46_addr4.s_addr
-    }));
-    format!("{}", addr)
-}
-
-fn dump_addr_v6(a: &libc::in_dependaddr) -> String {
-    let addr = std::net::Ipv6Addr::from_bits(u128::from_be_bytes(unsafe {
-	a.id6_addr.s6_addr
-    }));
-    format!("{}", addr)
-}
-
-fn dump_addr(a: &libc::in_dependaddr, ipv6: bool) -> String {
-    if ipv6 {
-	dump_addr_v6(a)
-    } else {
-	dump_addr_v4(a)
-    }
-}
-
-fn dump_endpoints(ie: &libc::in_endpoints, ipv6: bool) -> String {
+fn dump_conninfo(ie: &TCPConn) -> String {
     let mut res = String::from("");
-    res.push_str(&dump_addr(&ie.ie_dependfaddr, ipv6));
-    res.push('\t');
-    res.push_str(&format!("{}", u16::from_be(ie.ie_fport)));
-    res.push('\t');
-    res.push_str(&dump_addr(&ie.ie_dependladdr, ipv6));
-    res.push('\t');
-    res.push_str(&format!("{}", u16::from_be(ie.ie_lport)));
-    res
-}
-
-fn dump_conninfo(ci: &libc::in_conninfo) -> String {
-    let mut res = String::from("");
-    let ipv6 = (ci.inc_flags & libc::INC_ISIPV6) != 0;
-    res.push_str(&dump_endpoints(&ci.inc_ie, ipv6));
-    if ci.inc_fibnum != 0 {
-	res.push('\t');
-	res.push_str(&format!("fib={}", ci.inc_fibnum));
-    }
-    res
-}
-
-fn dump_ifnamen(name: &[u8]) -> String {
-    let mut res = String::from("");
-    for n in name {
-	if *n == 0 {
-	    break;
-	}
-	res.push(unsafe { char::from_u32_unchecked(*n as u32) });
+    res.push_str(&format!("{}\t{}\t{}\t{}",
+	ie.faddr, ie.fport, ie.laddr, ie.lport));
+    if ie.fib != 0 {
+	res.push_str(&format!("\tfib={}", ie.fib));
     }
     res
 }
@@ -210,45 +175,35 @@ fn dump_key(b: &Vec<u8>) -> String {
     res
 }
 
-fn dump_xktls_od(xtls_od: &libc::xktls_session_onedir, vlan: u16,
-	cipher_key: &Vec<u8>, auth_key: &Vec<u8>, iv: &Vec<u8>,
-	args: &KTCPArgs) -> String {
+fn dump_xktls_od(ktls_s: &KTLSSessInfo, args: &KTCPArgs) -> String {
     let mut res = String::from("");
     res.push_str(&format!("tls_vmajor={} tls_vminor={}",
-	xtls_od.tls_vmajor, xtls_od.tls_vminor));
-    res.push_str(&format!(" cipher_algo={}", xtls_od.cipher_algorithm));
-    if cipher_key.len() > 0 && args.keys {
-	res.push_str(&format!(" cipher_key={}", dump_key(cipher_key)));
+	ktls_s.tls_vmajor, ktls_s.tls_vminor));
+    res.push_str(&format!(" cipher_algo={}", ktls_s.cipher_algorithm));
+    if ktls_s.cipher_key.len() > 0 && args.keys {
+	res.push_str(&format!(" cipher_key={}", dump_key(&ktls_s.cipher_key)));
     }
-    res.push_str(&format!(" auth_algo={}", xtls_od.auth_algorithm));
-    if auth_key.len() > 0 && args.keys {
-	res.push_str(&format!(" auth_key={}", dump_key(auth_key)));
+    res.push_str(&format!(" auth_algo={}", ktls_s.auth_algorithm));
+    if ktls_s.auth_key.len() > 0 && args.keys {
+	res.push_str(&format!(" auth_key={}", dump_key(&ktls_s.auth_key)));
     }
-    if iv.len() > 0 && args.keys {
-	res.push_str(&format!(" iv={}", dump_key(iv)));
+    if ktls_s.iv.len() > 0 && args.keys {
+	res.push_str(&format!(" iv={}", dump_key(&ktls_s.iv)));
     }
-    if xtls_od.ifnet[0] != 0 {
-	res.push_str(" oflif=");
-	res.push_str(&dump_ifnamen(&xtls_od.ifnet));
+    if ktls_s.offload_ifnet.len() != 0 {
+	res.push_str(&format!(" oflif={}", &ktls_s.offload_ifnet));
     }
-    if vlan != 0 {
-	res.push('\t');
-	res.push_str(&format!("vlan={}", vlan));
+    if ktls_s.vlan != 0 {
+	res.push_str(&format!(" vlan={}", ktls_s.vlan));
     }
     res
 }
 
 fn dump_xktls_conn(conn: &KTLSTCPConn, args: &KTCPArgs) -> String {
     let mut res = String::from("");
-    res.push_str(&dump_conninfo(&conn.xktls.coninf));
-    res.push('\t');
-    res.push_str(&format!("rcv=({})", dump_xktls_od(&conn.xktls.rcv,
-	conn.xktls.rx_vlan_id as u16, &conn.cipher_rcv_key,
-	&conn.auth_rcv_key, &conn.iv_rcv, args)));
-    res.push('\t');
-    res.push_str(&format!("snd=({})", dump_xktls_od(&conn.xktls.snd,
-	0, &conn.cipher_snd_key,
-	&conn.auth_snd_key, &conn.iv_snd, args)));
+    res.push_str(&dump_conninfo(&conn.ie));
+    res.push_str(&format!("\trcv=({})", &dump_xktls_od(&conn.rcv, args)));
+    res.push_str(&format!("\tsnd=({})", &dump_xktls_od(&conn.snd, args)));
     res
 }
 
@@ -269,6 +224,39 @@ fn gather_key_bytes(ptr: *const u8, off: usize, sz: usize) -> Vec::<u8> {
 	    let ptr1: *const u8 = ptr.add(off + i);
 	    res.push(*ptr1);
 	}
+    }
+    res
+}
+
+fn parse_addr(a: &libc::in_dependaddr, ipv6: bool) -> std::net::IpAddr {
+    if ipv6 {
+	std::net::IpAddr::V6(std::net::Ipv6Addr::from_bits(
+	    u128::from_be_bytes(unsafe { a.id6_addr.s6_addr })))
+    } else {
+	std::net::IpAddr::V4(std::net::Ipv4Addr::from_bits(
+	    u32::to_be(unsafe { a.id46_addr.ia46_addr4.s_addr })))
+    }
+}
+
+fn parse_endpoints(ci: &libc::in_conninfo) -> TCPConn {
+    let ipv6 = (ci.inc_flags & libc::INC_ISIPV6) != 0;
+    let res = TCPConn {
+	lport: u16::from_be(ci.inc_ie.ie_lport),
+	laddr: parse_addr(&ci.inc_ie.ie_dependladdr, ipv6),
+	fport: u16::from_be(ci.inc_ie.ie_fport),
+	faddr: parse_addr(&ci.inc_ie.ie_dependfaddr, ipv6),
+	fib: ci.inc_fibnum,
+    };
+    res
+}
+
+fn parse_offload_ifname(name: &[u8]) -> String {
+    let mut res = String::from("");
+    for n in name {
+	if *n == 0 {
+	    break;
+	}
+	res.push(unsafe { char::from_u32_unchecked(*n as u32) });
     }
     res
 }
@@ -314,13 +302,39 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 	    let auth_snd_key = gather_key_bytes(ptr, pos, len);
 
 	    let conn = KTLSTCPConn {
-		xktls: *xktls,
-		iv_rcv: iv_rcv,
-		cipher_rcv_key: cipher_rcv_key,
-		auth_rcv_key: auth_rcv_key,
-		iv_snd: iv_snd,
-		cipher_snd_key: cipher_snd_key,
-		auth_snd_key: auth_snd_key,
+		ie: parse_endpoints(&xktls.coninf),
+		rcv: KTLSSessInfo {
+		    iv: iv_rcv,
+		    cipher_algorithm: xktls.rcv.cipher_algorithm,
+		    cipher_key: cipher_rcv_key,
+		    auth_key: auth_rcv_key,
+		    auth_algorithm: xktls.rcv.auth_algorithm,
+		    max_frame_len: xktls.rcv.max_frame_len,
+		    tls_vmajor: xktls.rcv.tls_vmajor,
+		    tls_vminor: xktls.rcv.tls_vminor,
+		    tls_hlen: xktls.rcv.tls_hlen,
+		    tls_tlen: xktls.rcv.tls_tlen,
+		    tls_bs: xktls.rcv.tls_bs,
+		    flags: xktls.rcv.flags,
+		    vlan: xktls.rx_vlan_id as u16,
+		    offload_ifnet: parse_offload_ifname(&xktls.rcv.ifnet),
+		},
+		snd: KTLSSessInfo {
+		    iv: iv_snd,
+		    cipher_key: cipher_snd_key,
+		    cipher_algorithm: xktls.snd.cipher_algorithm,
+		    auth_key: auth_snd_key,
+		    auth_algorithm: xktls.snd.auth_algorithm,
+		    max_frame_len: xktls.snd.max_frame_len,
+		    tls_vmajor: xktls.snd.tls_vmajor,
+		    tls_vminor: xktls.snd.tls_vminor,
+		    tls_hlen: xktls.snd.tls_hlen,
+		    tls_tlen: xktls.snd.tls_tlen,
+		    tls_bs: xktls.snd.tls_bs,
+		    flags: xktls.snd.flags,
+		    vlan: 0,
+		    offload_ifnet: parse_offload_ifname(&xktls.snd.ifnet),
+		},
 	    };
 	    res.conns.push(conn);
 	} else if args.debug > 1 {
