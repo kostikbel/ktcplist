@@ -3,8 +3,7 @@ use std::ffi::CString;
 use std::process;
 use std::ptr;
 use clap::Parser;
-use serde::{Serialize, Serializer};
-//use serde_json::Result;
+use serde::Serialize;
 
 #[derive(Parser, Debug)]
 #[command(version,
@@ -213,8 +212,9 @@ fn dump_xktls_conns(conns: &KTLSTCPConns, args: &KTCPArgs) {
     }
 }
 
-fn json_xktls_conns(conns: &KTLSTCPConns, args: &KTCPArgs) {
-    eprintln!("Not implemented");
+fn json_xktls_conns(conns: &KTLSTCPConns, _args: &KTCPArgs) {
+    let j = serde_json::to_string(&conns).unwrap();
+    println!("{}", j);
 }
 
 fn gather_key_bytes(ptr: *const u8, off: usize, sz: usize) -> Vec::<u8> {
