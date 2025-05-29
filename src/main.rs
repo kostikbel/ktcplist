@@ -217,8 +217,12 @@ fn json_xktls_conns(conns: &KTLSTCPConns, _args: &KTCPArgs) {
     println!("{}", j);
 }
 
-fn gather_key_bytes(ptr: *const u8, off: usize, sz: usize) -> Vec::<u8> {
+fn gather_key_bytes(ptr: *const u8, off: usize, sz: usize,
+	args: &KTCPArgs) -> Vec::<u8> {
     let mut res = Vec::<u8>::new();
+    if !args.keys {
+	return res;
+    }
     for i in 0..sz {
 	unsafe {
 	    let ptr1: *const u8 = ptr.add(off + i);
@@ -281,25 +285,25 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 	    let mut len: usize;
 
 	    let iv_rcv = gather_key_bytes(xktls.rcv.iv.as_ptr(), 0,
-		xktls.rcv.iv_len as usize);
+		xktls.rcv.iv_len as usize, args);
 
 	    len = xktls.rcv.cipher_key_len as usize;
-	    let cipher_rcv_key = gather_key_bytes(ptr, pos, len);
+	    let cipher_rcv_key = gather_key_bytes(ptr, pos, len, args);
 	    pos += len;
 
 	    len = xktls.rcv.auth_key_len as usize;
-	    let auth_rcv_key = gather_key_bytes(ptr, pos, len);
+	    let auth_rcv_key = gather_key_bytes(ptr, pos, len, args);
 	    pos += len;
 	    
 	    let iv_snd = gather_key_bytes(xktls.snd.iv.as_ptr(), 0,
-		xktls.snd.iv_len as usize);
+		xktls.snd.iv_len as usize, args);
 
 	    len = xktls.snd.cipher_key_len as usize;
-	    let cipher_snd_key = gather_key_bytes(ptr, pos, len);
+	    let cipher_snd_key = gather_key_bytes(ptr, pos, len, args);
 	    pos += len;
 
 	    len = xktls.snd.auth_key_len as usize;
-	    let auth_snd_key = gather_key_bytes(ptr, pos, len);
+	    let auth_snd_key = gather_key_bytes(ptr, pos, len, args);
 
 	    let conn = KTLSTCPConn {
 		ie: parse_endpoints(&xktls.coninf),
