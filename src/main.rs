@@ -135,9 +135,8 @@ fn fetch_klts_table(dump_keys: bool) -> (*const libc::xktls_session,
 	    &*std::mem::transmute::<*mut u8, *const libc::xinpgen>(buf)
 	};
         let exig: &libc::xinpgen = unsafe {
-            &*std::mem::transmute::<*mut u8, *const libc::xinpgen>(
-                buf.add(sz - std::mem::size_of::<libc::xinpgen>()),
-            )
+            &*((xig as *const libc::xinpgen).map_addr(
+		|x| x + sz - std::mem::size_of::<libc::xinpgen>()))
         };
         let ktlss: *const libc::xktls_session = unsafe {
             std::mem::transmute::<*mut u8, *const libc::xktls_session>(
