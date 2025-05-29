@@ -275,6 +275,15 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
     }
     let mut i: usize = 0;
     let mut xktls: &libc::xktls_session = unsafe { &*xktlss };
+    if xktls.fsz as usize != std::mem::size_of::<libc::xktls_session>() {
+	eprintln!("Kernel ktls_session structure changed");
+	if args.debug >= 2 {
+	    eprintln!("My size {} kernel size {}",
+		std::mem::size_of::<libc::xktls_session>(),
+		xktls.fsz);
+	}
+        process::exit(1);
+    }
     loop {
 	if xktls.rcv.gennum < inpgen && xktls.snd.gennum < inpgen {
 	    let ptr: *const u8 = unsafe {
