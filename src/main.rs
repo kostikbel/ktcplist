@@ -3,6 +3,8 @@ use std::ffi::CString;
 use std::process;
 use std::ptr;
 use clap::Parser;
+//use serde::{Serialize, Serializer};
+//use serde_json::Result;
 
 #[derive(Parser, Debug)]
 #[command(version,
@@ -16,6 +18,10 @@ struct KTCPArgs {
     /// Dump keys
     #[arg(short, long)]
     keys: bool,
+
+    /// Dump into json
+    #[arg(short, long)]
+    json: bool,
 }
 
 fn c_char_ptr_to_string(ptr: *const libc::c_char) -> String {
@@ -28,6 +34,34 @@ fn strerror(errno: i32) -> String {
 
 fn get_errno() -> libc::c_int {
     std::io::Error::last_os_error().raw_os_error().unwrap()
+}
+
+/*
+impl Serialize for libc::xktls_session {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+	//        serializer.serialize_i32(*self)
+	S::Error()
+    }
+}
+*/
+
+//#[derive(Serialize)]
+struct KTLSTCPConn {
+    xktls: libc::xktls_session,
+    iv_rcv: Vec<u8>,
+    cipher_rcv_key: Vec<u8>,
+    auth_rcv_key: Vec<u8>,
+    iv_snd: Vec<u8>,
+    cipher_snd_key: Vec<u8>,
+    auth_snd_key: Vec<u8>,
+}
+
+//#[derive(Serialize)]
+struct KTLSTCPConns {
+    conns: Vec<KTLSTCPConn>,
 }
 
 fn fetch_klts_table(dump_keys: bool) -> (*const libc::xktls_session,
@@ -160,71 +194,150 @@ fn dump_ifnamen(name: &[u8]) -> String {
     res
 }
 
-fn dump_key(ptr: *const u8, len: u16) -> String {
+fn dump_key(b: &Vec<u8>) -> String {
     let mut res = String::from("");
     let mut first = true;
     res.push('[');
-    for x in 0..len {
+    for x in b {
 	if first {
 	    first  = false;
 	} else {
 	    res.push(' ');
 	};
-	unsafe {
-	    let ptr1: *const u8 = ptr.add(x as usize);
-	    res.push_str(&format!("{:02x}", *ptr1));
-	}
+	res.push_str(&format!("{:02x}", x));
     }
     res.push(']');
     res
 }
 
-fn dump_xktls_od(xtls_od: &libc::xktls_session_onedir, rcv: bool, vlan: u16,
-	 ptr: *const u8, args: &KTCPArgs) -> String {
+fn dump_xktls_od(xtls_od: &libc::xktls_session_onedir, vlan: u16,
+	cipher_key: &Vec<u8>, auth_key: &Vec<u8>, iv: &Vec<u8>,
+	args: &KTCPArgs) -> String {
     let mut res = String::from("");
     res.push_str(&format!("tls_vmajor={} tls_vminor={}",
 	xtls_od.tls_vmajor, xtls_od.tls_vminor));
     res.push_str(&format!(" cipher_algo={}", xtls_od.cipher_algorithm));
-    if xtls_od.cipher_key_len > 0 && args.keys {
-	res.push_str(&format!(" cipher_key={}", dump_key(ptr,
-	    xtls_od.cipher_key_len)));
+    if cipher_key.len() > 0 && args.keys {
+	res.push_str(&format!(" cipher_key={}", dump_key(cipher_key)));
     }
     res.push_str(&format!(" auth_algo={}", xtls_od.auth_algorithm));
-    if xtls_od.auth_key_len > 0 && args.keys {
-	res.push_str(&format!(" auth_key={}", dump_key(unsafe { ptr.add(
-	    xtls_od.cipher_key_len as usize) },
-	    xtls_od.auth_key_len)));
+    if auth_key.len() > 0 && args.keys {
+	res.push_str(&format!(" auth_key={}", dump_key(auth_key)));
     }
-    if xtls_od.iv_len > 0 && args.keys {
-	res.push_str(&format!(" iv={}", dump_key(xtls_od.iv.as_ptr(),
-	    xtls_od.iv_len)));
+    if iv.len() > 0 && args.keys {
+	res.push_str(&format!(" iv={}", dump_key(iv)));
     }
     if xtls_od.ifnet[0] != 0 {
 	res.push_str(" oflif=");
 	res.push_str(&dump_ifnamen(&xtls_od.ifnet));
     }
-    if rcv && vlan != 0 {
+    if vlan != 0 {
 	res.push('\t');
 	res.push_str(&format!("vlan={}", vlan));
     }
     res
 }
 
-fn dump_xktls(xktls: &libc::xktls_session, args: &KTCPArgs) -> String {
+fn dump_xktls_conn(conn: &KTLSTCPConn, args: &KTCPArgs) -> String {
     let mut res = String::from("");
-    let ptr: *const u8 = unsafe {
-	std::mem::transmute::<&libc::xktls_session, *const u8>(xktls).
-	    add(std::mem::size_of::<libc::xktls_session>())
-    };
+    res.push_str(&dump_conninfo(&conn.xktls.coninf));
+    res.push('\t');
+    res.push_str(&format!("rcv=({})", dump_xktls_od(&conn.xktls.rcv,
+	conn.xktls.rx_vlan_id as u16, &conn.cipher_rcv_key,
+	&conn.auth_rcv_key, &conn.iv_rcv, args)));
+    res.push('\t');
+    res.push_str(&format!("snd=({})", dump_xktls_od(&conn.xktls.snd,
+	0, &conn.cipher_snd_key,
+	&conn.auth_snd_key, &conn.iv_snd, args)));
+    res
+}
 
-    res.push_str(&dump_conninfo(&xktls.coninf));
-    res.push('\t');
-    res.push_str(&format!("rcv=({})", dump_xktls_od(
-	&xktls.rcv, true, xktls.rx_vlan_id as u16, ptr, args)));
-    res.push('\t');
-    res.push_str(&format!("snd=({})", dump_xktls_od(&xktls.snd, false, 0,
-	unsafe { ptr.add(xktls.rcv.cipher_key_len as usize +
-	    xktls.rcv.auth_key_len as usize) }, args)));
+fn dump_xktls_conns(conns: &KTLSTCPConns, args: &KTCPArgs) {
+    for conn in &conns.conns {
+	println!("{}", dump_xktls_conn(&conn, args))
+    }
+}
+
+fn json_xktls_conns(conns: &KTLSTCPConns, args: &KTCPArgs) {
+    eprintln!("Not implemented");
+}
+
+fn gather_key_bytes(ptr: *const u8, off: usize, sz: usize) -> Vec::<u8> {
+    let mut res = Vec::<u8>::new();
+    for i in 0..sz {
+	unsafe {
+	    let ptr1: *const u8 = ptr.add(off + i);
+	    res.push(*ptr1);
+	}
+    }
+    res
+}
+
+fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
+	inpgen: libc::inp_gen_t, args: &KTCPArgs) -> KTLSTCPConns {
+    let mut res = KTLSTCPConns {
+	conns: Vec::<KTLSTCPConn>::new(),
+    };
+    if count == 0 {
+	return res;
+    }
+    let mut i: usize = 0;
+    let mut xktls: &libc::xktls_session = unsafe { &*xktlss };
+    loop {
+	if xktls.rcv.gennum < inpgen && xktls.snd.gennum < inpgen {
+	    let ptr: *const u8 = unsafe {
+		std::mem::transmute::<&libc::xktls_session, *const u8>(xktls).
+		    add(std::mem::size_of::<libc::xktls_session>())
+	    };
+	    let mut pos: usize = 0;
+	    let mut len: usize;
+
+	    let iv_rcv = gather_key_bytes(xktls.rcv.iv.as_ptr(), 0,
+		xktls.rcv.iv_len as usize);
+
+	    len = xktls.rcv.cipher_key_len as usize;
+	    let cipher_rcv_key = gather_key_bytes(ptr, pos, len);
+	    pos += len;
+
+	    len = xktls.rcv.auth_key_len as usize;
+	    let auth_rcv_key = gather_key_bytes(ptr, pos, len);
+	    pos += len;
+	    
+	    let iv_snd = gather_key_bytes(xktls.snd.iv.as_ptr(), 0,
+		xktls.snd.iv_len as usize);
+
+	    len = xktls.snd.cipher_key_len as usize;
+	    let cipher_snd_key = gather_key_bytes(ptr, pos, len);
+	    pos += len;
+
+	    len = xktls.snd.auth_key_len as usize;
+	    let auth_snd_key = gather_key_bytes(ptr, pos, len);
+
+	    let conn = KTLSTCPConn {
+		xktls: *xktls,
+		iv_rcv: iv_rcv,
+		cipher_rcv_key: cipher_rcv_key,
+		auth_rcv_key: auth_rcv_key,
+		iv_snd: iv_snd,
+		cipher_snd_key: cipher_snd_key,
+		auth_snd_key: auth_snd_key,
+	    };
+	    res.conns.push(conn);
+	} else if args.debug > 1 {
+	    println!("conn {} skipped, generations rcv {} snd {}",
+		 i, xktls.rcv.gennum, xktls.snd.gennum);
+	}
+	i += 1;
+	if i >= count {
+	    break;
+	}
+	xktls = unsafe {
+	    let rptr: *const u8 = std::mem::transmute::<
+		*const libc::xktls_session, *const u8>(xktls);
+	    &*std::mem::transmute::<*const u8, *const libc::xktls_session>(
+		rptr.add(xktls.tsz.try_into().unwrap()))
+	};
+    }
     res
 }
 
@@ -235,26 +348,10 @@ fn main() {
 	eprintln!("KTLS table from kernel: {} connections, xinpcb generation {}",
 		  count, inpgen);
     }
-    let mut i: usize = 0;
-    if count > 0 {
-	let mut xktls: &libc::xktls_session = unsafe { &*xktlss };
-	loop {
-	    if xktls.rcv.gennum < inpgen && xktls.snd.gennum < inpgen {
-		println!("{}", dump_xktls(xktls, &args));
-	    } else if args.debug > 1 {
-		println!("conn {} skipped, generations rcv {} snd {}",
-			 i, xktls.rcv.gennum, xktls.snd.gennum);
-	    }
-	    i += 1;
-	    if i >= count {
-		break;
-	    }
-	    xktls = unsafe {
-		let rptr: *const u8 = std::mem::transmute::<
-		    *const libc::xktls_session, *const u8>(xktls);
-		&*std::mem::transmute::<*const u8, *const libc::xktls_session>(
-		    rptr.add(xktls.tsz.try_into().unwrap()))
-	    };
-	}
+    let conns = parse_kern_data(xktlss, count, inpgen, &args);
+    if args.json {
+	json_xktls_conns(&conns, &args);
+    } else {
+	dump_xktls_conns(&conns, &args);
     }
 }
