@@ -359,10 +359,8 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 	    break;
 	}
 	xktls = unsafe {
-	    let rptr: *const u8 = std::mem::transmute::<
-		*const libc::xktls_session, *const u8>(xktls);
-	    &*std::mem::transmute::<*const u8, *const libc::xktls_session>(
-		rptr.add(xktls.tsz.try_into().unwrap()))
+	    &*((xktls as *const libc::xktls_session).map_addr(
+		|x| x + (xktls.tsz as usize)))
 	};
     }
     res
