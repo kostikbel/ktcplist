@@ -60,6 +60,7 @@ struct KTLSSessInfo {
     flags: u8,
     vlan: u16,
     offload_ifnet: String,
+    offload_drv_info: String,
 }
 
 #[derive(Serialize)]
@@ -253,7 +254,7 @@ fn parse_endpoints(ci: &libc::in_conninfo) -> TCPConn {
     res
 }
 
-fn parse_offload_ifname(name: &[u8]) -> String {
+fn bytes_to_string(name: &[u8]) -> String {
     let mut res = String::from("");
     for n in name {
 	if *n == 0 {
@@ -302,12 +303,20 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 	    len = xktls.rcv.auth_key_len as usize;
 	    let auth_rcv_key = gather_key_bytes(ptr, pos, len, args);
 	    pos += len;
+
+	    len = xktls.rcv.drv_st_len as usize;
+	    let drv_st_rcv_bytes = gather_key_bytes(ptr, pos, len, args);
+	    pos += len;
 	    
 	    let iv_snd = gather_key_bytes(xktls.snd.iv.as_ptr(), 0,
 		xktls.snd.iv_len as usize, args);
 
 	    len = xktls.snd.cipher_key_len as usize;
 	    let cipher_snd_key = gather_key_bytes(ptr, pos, len, args);
+	    pos += len;
+
+	    len = xktls.snd.drv_st_len as usize;
+	    let drv_st_snd_bytes = gather_key_bytes(ptr, pos, len, args);
 	    pos += len;
 
 	    len = xktls.snd.auth_key_len as usize;
@@ -329,7 +338,8 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 		    tls_bs: xktls.rcv.tls_bs,
 		    flags: xktls.rcv.flags,
 		    vlan: xktls.rx_vlan_id as u16,
-		    offload_ifnet: parse_offload_ifname(&xktls.rcv.ifnet),
+		    offload_ifnet: bytes_to_string(&xktls.rcv.ifnet),
+		    offload_drv_info: bytes_to_string(&drv_st_rcv_bytes),
 		},
 		snd: KTLSSessInfo {
 		    iv: iv_snd,
@@ -345,7 +355,8 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 		    tls_bs: xktls.snd.tls_bs,
 		    flags: xktls.snd.flags,
 		    vlan: 0,
-		    offload_ifnet: parse_offload_ifname(&xktls.snd.ifnet),
+		    offload_ifnet: bytes_to_string(&xktls.snd.ifnet),
+		    offload_drv_info: bytes_to_string(&drv_st_snd_bytes),
 		},
 	    };
 	    res.conns.push(conn);
