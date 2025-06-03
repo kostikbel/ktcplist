@@ -7,7 +7,7 @@ use serde::Serialize;
 
 #[derive(Parser, Debug)]
 #[command(version,
-	  about = "Dump tcp connections with ktls offload",
+	  about = "List tcp connections with ktls offload",
 	  long_about = None)]
 struct KTCPArgs {
     /// Output debugging information

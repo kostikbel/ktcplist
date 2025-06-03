@@ -1,5 +1,5 @@
 [package]
-name = "ktcpdump"
+name = "ktcplist"
 version = "0.1.9999"
 edition = "2024"
 
