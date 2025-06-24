@@ -285,7 +285,7 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
         process::exit(1);
     }
     loop {
-	if xktls.rcv.gennum < inpgen && xktls.snd.gennum < inpgen {
+	if xktls.rcv.gennum <= inpgen && xktls.snd.gennum <= inpgen {
 	    let ptr: *const u8 = unsafe {
 		std::mem::transmute::<&libc::xktls_session, *const u8>(xktls).
 		    add(std::mem::size_of::<libc::xktls_session>())
