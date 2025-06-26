@@ -5,6 +5,6 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.32", features = ["derive"] }
-libc = { path = "/usr/home/kostik/work/langs/rust/libc" }
+libc = { git = 'https://github.com/rust-lang/libc.git' }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
