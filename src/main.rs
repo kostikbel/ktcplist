@@ -1,3 +1,12 @@
+/*-
+ * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+ * Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * This software was developed by Konstantin Belousov <kib@FreeBSD.org>
+ * under sponsorship from NVidia networking.
+ */
+
 use std::alloc::*;
 use std::ffi::CString;
 use std::process;
