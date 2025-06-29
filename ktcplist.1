@@ -1,0 +1,105 @@
+.\"-
+.\" SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+.\" Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\"
+.\" This software was developed by Konstantin Belousov <kib@FreeBSD.org>
+.\" under sponsorship from NVidia networking.
+.\"
+.Dd April 4, 2025
+.Dt KTLSLIST 1
+.Os
+.Sh NAME
+.Nm ktlslist
+.Nd 
+.Sh SYNOPSIS
+.Nm
+.Op Fl d
+.Op Fl h
+.Op Fl j
+.Op Fl k
+.Op Fl V
+.Sh DESCRIPTION
+The
+.Nm
+utility lists established TCP connections for which kernel TLS
+offload sessions were created.
+Only connections visible to the current user are reported.
+.Pp
+By default, somewhat informal format of reporting is used, where
+each line corresponds to single connection.
+Specifying the
+.Fl j
+option changes the output format to JSON.
+.Pp
+The
+.Fl k
+option requests dumping the keying material for the cryptographic
+algorithms used for the session handling, as known to kernel.
+.Pp
+Passing the
+.Fl d
+option prints internal debugging information about
+.Nm
+running.
+The option can be specified several times to dump more debugging information.
+.Pp
+The
+.Fl h
+option prints brief help on the utility usage, and the
+.Fl V
+option requests to print the version.
+.Sh EXAMPLE
+Below is the default (free) format of the utility output, without keys:
+.Bd -literal
+1.1.1.1 5001    1.1.1.2 19502   rcv=(tls_vmajor=3 tls_vminor=4 cipher_algo=25 auth_algo=0 oflif=mce0)   snd=(tls_vmajor=3 tls_vminor=4 cipher_algo=25 auth_algo=0 oflif=mce0)
+.Ed
+.Pp
+The first four line fields are remote IP address and port,
+then local IP address and port, that identify the connection.
+.Pp
+Next is the
+.Li rcv
+block that reports receive session info, if present.
+It provides tls versions, cipher and authentication algorithm numbers, which
+are listed in
+.In /usr/include/crypto/cryptodev.h
+.Po
+see also
+.Xr crypto 7
+.Pc .
+.Pp
+The
+.Li oflif
+value, if present, indicates that the session is offloaded onto specified
+network interface, in this case,
+.Li mce0 .
+Network drivers might provide additional free-format string for sessions,
+describing driver-specific offload state.
+.Pp
+The
+.Fl k
+option adds the values of the keys and nonces.
+.Pp
+The next block
+.Li snd
+provides the same information for transmit session.
+.Sh SEE ALSO
+.Xr netstat 1 ,
+.Xr ktls 4 ,
+.Xr tcp 4 .
+.Sh NOTES
+.Nm
+is
+.Fx -specific
+and only works on
+.Fx .
+.Pp
+.Nm
+uses sysctl
+.Va net.inet.tcp.ktlslist
+to get information about connections, or
+.Va net.inet.tcp.ktlslist_wkeys
+if dumping the keys was requested.
+.Sh AUTHORS
+.An Konstantin Belousov Aq Mt kib@FreeBSD.org .
