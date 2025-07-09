@@ -200,6 +200,10 @@ fn dump_xktls_od(ktls_s: &KTLSSessInfo, args: &KTCPArgs) -> String {
     }
     if ktls_s.offload_ifnet.len() != 0 {
 	res.push_str(&format!(" oflif={}", &ktls_s.offload_ifnet));
+	if ktls_s.offload_drv_info.len() != 0 {
+	    res.push_str(&format!(" drvinfo=\"{}\"",
+		&ktls_s.offload_drv_info));
+	}
     }
     if ktls_s.vlan != 0 {
 	res.push_str(&format!(" vlan={}", ktls_s.vlan));
