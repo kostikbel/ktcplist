@@ -227,9 +227,9 @@ fn json_xktls_conns(conns: &KTLSTCPConns, _args: &KTCPArgs) {
 }
 
 fn gather_key_bytes(ptr: *const u8, off: usize, sz: usize,
-	args: &KTCPArgs) -> Vec::<u8> {
+	op: bool) -> Vec::<u8> {
     let mut res = Vec::<u8>::new();
-    if !args.keys {
+    if !op {
 	return res;
     }
     for i in 0..sz {
@@ -303,33 +303,33 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 	    let mut len: usize;
 
 	    let iv_rcv = gather_key_bytes(xktls.rcv.iv.as_ptr(), 0,
-		xktls.rcv.iv_len as usize, args);
+		xktls.rcv.iv_len as usize, args.keys);
 
 	    len = xktls.rcv.cipher_key_len as usize;
-	    let cipher_rcv_key = gather_key_bytes(ptr, pos, len, args);
+	    let cipher_rcv_key = gather_key_bytes(ptr, pos, len, args.keys);
 	    pos += len;
 
 	    len = xktls.rcv.auth_key_len as usize;
-	    let auth_rcv_key = gather_key_bytes(ptr, pos, len, args);
+	    let auth_rcv_key = gather_key_bytes(ptr, pos, len, args.keys);
 	    pos += len;
 
 	    len = xktls.rcv.drv_st_len as usize;
-	    let drv_st_rcv_bytes = gather_key_bytes(ptr, pos, len, args);
+	    let drv_st_rcv_bytes = gather_key_bytes(ptr, pos, len, true);
 	    pos += len;
 	    
 	    let iv_snd = gather_key_bytes(xktls.snd.iv.as_ptr(), 0,
-		xktls.snd.iv_len as usize, args);
+		xktls.snd.iv_len as usize, args.keys);
 
 	    len = xktls.snd.cipher_key_len as usize;
-	    let cipher_snd_key = gather_key_bytes(ptr, pos, len, args);
-	    pos += len;
-
-	    len = xktls.snd.drv_st_len as usize;
-	    let drv_st_snd_bytes = gather_key_bytes(ptr, pos, len, args);
+	    let cipher_snd_key = gather_key_bytes(ptr, pos, len, args.keys);
 	    pos += len;
 
 	    len = xktls.snd.auth_key_len as usize;
-	    let auth_snd_key = gather_key_bytes(ptr, pos, len, args);
+	    let auth_snd_key = gather_key_bytes(ptr, pos, len, args.keys);
+	    pos += len;
+
+	    len = xktls.snd.drv_st_len as usize;
+	    let drv_st_snd_bytes = gather_key_bytes(ptr, pos, len, true);
 
 	    let conn = KTLSTCPConn {
 		ie: parse_endpoints(&xktls.coninf),
