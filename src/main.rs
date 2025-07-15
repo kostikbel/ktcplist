@@ -11,6 +11,7 @@ use std::alloc::*;
 use std::ffi::CString;
 use std::process;
 use std::ptr;
+use libc::c_char;
 use clap::Parser;
 use serde::Serialize;
 
@@ -95,7 +96,7 @@ fn fetch_klts_table(dump_keys: bool) -> (*const libc::xktls_session,
     let mut sz: libc::size_t = 0;
     let e = unsafe {
         libc::sysctlbyname(
-            oidnamec.as_ptr() as *const i8,
+            oidnamec.as_ptr() as *const c_char,
             ptr::null_mut(),
             &raw mut sz,
             ptr::null_mut(),
@@ -123,7 +124,7 @@ fn fetch_klts_table(dump_keys: bool) -> (*const libc::xktls_session,
         let mut ksz: libc::size_t = sz;
         let e = unsafe {
             libc::sysctlbyname(
-                oidnamec.as_ptr() as *const i8,
+                oidnamec.as_ptr() as *const c_char,
                 buf as *mut libc::c_void,
                 &raw mut ksz,
                 ptr::null_mut(),
