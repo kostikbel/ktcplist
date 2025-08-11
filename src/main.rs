@@ -56,11 +56,11 @@ struct TCPConn {
 
 #[derive(Serialize)]
 struct KTLSSessInfo {
-    iv: Vec<u8>,
+    iv: Vec<c_char>,
     cipher_algorithm: i32,
-    cipher_key: Vec<u8>,
+    cipher_key: Vec<c_char>,
     auth_algorithm: i32,
-    auth_key: Vec<u8>,
+    auth_key: Vec<c_char>,
     max_frame_len: u16,
     tls_vmajor: u8,
     tls_vminor: u8,
@@ -168,7 +168,7 @@ fn dump_conninfo(ie: &TCPConn) -> String {
     res
 }
 
-fn dump_key(b: &Vec<u8>) -> String {
+fn dump_key(b: &Vec<c_char>) -> String {
     let mut res = String::from("");
     let mut first = true;
     res.push('[');
@@ -231,15 +231,15 @@ fn json_xktls_conns(conns: &KTLSTCPConns, _args: &KTCPArgs) {
     println!("{}", j);
 }
 
-fn gather_key_bytes(ptr: *const u8, off: usize, sz: usize,
-	op: bool) -> Vec::<u8> {
-    let mut res = Vec::<u8>::new();
+fn gather_key_bytes(ptr: *const c_char, off: usize, sz: usize,
+	op: bool) -> Vec::<c_char> {
+    let mut res = Vec::<c_char>::new();
     if !op {
 	return res;
     }
     for i in 0..sz {
 	unsafe {
-	    let ptr1: *const u8 = ptr.add(off + i);
+	    let ptr1: *const c_char = ptr.add(off + i);
 	    res.push(*ptr1);
 	}
     }
@@ -268,7 +268,7 @@ fn parse_endpoints(ci: &libc::in_conninfo) -> TCPConn {
     res
 }
 
-fn bytes_to_string(name: &[u8]) -> String {
+fn bytes_to_string(name: &[c_char]) -> String {
     let mut res = String::from("");
     for n in name {
 	if *n == 0 {
@@ -300,15 +300,16 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
     }
     loop {
 	if xktls.rcv.gennum <= inpgen && xktls.snd.gennum <= inpgen {
-	    let ptr: *const u8 = unsafe {
-		std::mem::transmute::<&libc::xktls_session, *const u8>(xktls).
+	    let ptr: *const c_char = unsafe {
+		std::mem::transmute::<&libc::xktls_session,
+		    *const c_char>(xktls).
 		    add(std::mem::size_of::<libc::xktls_session>())
 	    };
 	    let mut pos: usize = 0;
 	    let mut len: usize;
 
-	    let iv_rcv = gather_key_bytes(xktls.rcv.iv.as_ptr(), 0,
-		xktls.rcv.iv_len as usize, args.keys);
+	    let iv_rcv = gather_key_bytes(xktls.rcv.iv.as_ptr() as *const c_char,
+		0, xktls.rcv.iv_len as usize, args.keys);
 
 	    len = xktls.rcv.cipher_key_len as usize;
 	    let cipher_rcv_key = gather_key_bytes(ptr, pos, len, args.keys);
@@ -322,8 +323,8 @@ fn parse_kern_data(xktlss: *const libc::xktls_session, count: usize,
 	    let drv_st_rcv_bytes = gather_key_bytes(ptr, pos, len, true);
 	    pos += len;
 	    
-	    let iv_snd = gather_key_bytes(xktls.snd.iv.as_ptr(), 0,
-		xktls.snd.iv_len as usize, args.keys);
+	    let iv_snd = gather_key_bytes(xktls.snd.iv.as_ptr() as *const c_char,
+		0, xktls.snd.iv_len as usize, args.keys);
 
 	    len = xktls.snd.cipher_key_len as usize;
 	    let cipher_snd_key = gather_key_bytes(ptr, pos, len, args.keys);
